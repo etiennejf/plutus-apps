@@ -137,8 +137,14 @@ lkpValue = fmap txOutValue . lkpTxOut
 -- | Find an unspent transaction output by its reference. Assumes that the
 --   output for this reference exists. If you want to handle the lookup error
 --   you can use 'runLookup'.
+-- Any datum hash associated with a spending pubkey utxo is discarded
 lkpTxOut :: ValidationMonad m => TxOutRef -> m TxOut
-lkpTxOut t = lookup t . vctxIndex =<< ask
+lkpTxOut t = do
+  txout@(TxOut addr v _) <- lookup t . vctxIndex =<< ask
+  if isPubKeyOut txout then
+    pure (TxOut addr v Nothing)
+  else
+    pure txout
 
 -- | Filter to get only the script inputs.
 scriptTxIns :: Fold [TxIn] TxIn
