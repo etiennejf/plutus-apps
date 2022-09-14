@@ -61,11 +61,12 @@ startNodeClient socket mode rollbackHistory slotConfig networkId resumePoint ins
     case mode of
       MockNode -> do
         void $ MockClient.runChainSync socket slotConfig
-            (\block slot -> handleSyncAction $ processMockBlock instancesState env block slot)
+            (\block slot -> handleSyncAction =<< processMockBlock instancesState env block slot)
       AlonzoNode -> do
         let resumePoints = maybeToList $ toCardanoPoint resumePoint
         void $ Client.runChainSync socket nullTracer slotConfig networkId resumePoints
-          (\block -> handleSyncAction $ processChainSyncEvent instancesState env block)
+          (\block -> handleSyncAction =<< processChainSyncEvent instancesState env block)
+      NoChainSyncEvents -> pure ()
     pure env
 
 -- | Deal with sync action failures from running this STM action. For now, we
@@ -97,10 +98,10 @@ processChainSyncEvent
   :: InstancesState
   -> BlockchainEnv
   -> ChainSyncEvent
-  -> STM (Either SyncActionFailure (Slot, BlockNumber))
+  -> IO (STM (Either SyncActionFailure (Slot, BlockNumber)))
 processChainSyncEvent instancesState blockchainEnv event = do
   case event of
-    Resume _ -> Right <$> blockAndSlot blockchainEnv
+    Resume _ -> pure (Right <$> blockAndSlot blockchainEnv)
     RollForward (BlockInMode (C.Block header transactions) era) _ ->
       case era of
         -- Unfortunately, we need to pattern match again all eras because
@@ -111,7 +112,7 @@ processChainSyncEvent instancesState blockchainEnv event = do
         C.AllegraEraInCardanoMode -> processBlock instancesState header blockchainEnv transactions era
         C.MaryEraInCardanoMode    -> processBlock instancesState header blockchainEnv transactions era
         C.AlonzoEraInCardanoMode  -> processBlock instancesState header blockchainEnv transactions era
-    RollBackward chainPoint _ -> runRollback blockchainEnv chainPoint
+    RollBackward chainPoint _ -> pure (runRollback blockchainEnv chainPoint)
 
 data SyncActionFailure
   = RollbackFailure RollbackFailed
@@ -160,12 +161,14 @@ processBlock :: forall era. C.IsCardanoEra era
              -> BlockchainEnv
              -> [C.Tx era]
              -> C.EraInMode era C.CardanoMode
-             -> STM (Either SyncActionFailure (Slot, BlockNumber))
+             -> IO (STM (Either SyncActionFailure (Slot, BlockNumber)))
 processBlock instancesState header env transactions era = do
   let C.BlockHeader (C.SlotNo slot) _ _ = header
-  STM.writeTVar (beCurrentSlot env) (fromIntegral slot)
+
   if null transactions
-     then Right <$> blockAndSlot env
+     then pure $ do
+        STM.writeTVar (beCurrentSlot env) (fromIntegral slot)
+        Right <$> blockAndSlot env
      else do
         let tip = fromCardanoBlockHeader header
             -- We ignore cardano transactions that we couldn't convert to
@@ -173,9 +176,11 @@ processBlock instancesState header env transactions era = do
             ciTxs = catMaybes (either (const Nothing) Just . fromCardanoTx era <$> transactions)
 
         instEnv <- S.instancesClientEnv instancesState
-        updateInstances (indexBlock ciTxs) instEnv
-
-        updateTransactionState tip env (txEvent <$> ciTxs)
+        pure $ do
+          e <- instEnv
+          STM.writeTVar (beCurrentSlot env) (fromIntegral slot)
+          updateInstances (indexBlock ciTxs) e
+          updateTransactionState tip env (txEvent <$> ciTxs)
 
 -- | For the given transactions, perform the updates in the 'TxIdState', and
 -- also record that a new block has been processed.
@@ -227,25 +232,26 @@ insertNewTx blockNumber TxIdState{txnsConfirmed, txnsDeleted} (txi, _, txValidit
 
 -- | Go through the transactions in a block, updating the 'BlockchainEnv'
 --   when any interesting addresses or transactions have changed.
-processMockBlock :: InstancesState -> BlockchainEnv -> Block -> Slot -> STM (Either SyncActionFailure (Slot, BlockNumber))
+processMockBlock :: InstancesState -> BlockchainEnv -> Block -> Slot -> IO (STM (Either SyncActionFailure (Slot, BlockNumber)))
 processMockBlock instancesState env@BlockchainEnv{beCurrentSlot, beCurrentBlock} transactions slot = do
-  lastSlot <- STM.readTVar beCurrentSlot
-  when (slot > lastSlot) $ do
-    STM.writeTVar beCurrentSlot slot
-
   if null transactions
-     then do
+     then pure $ do
+       lastSlot <- STM.readTVar beCurrentSlot
+       when (slot > lastSlot) $ do
+        STM.writeTVar beCurrentSlot slot
        result <- (,) <$> STM.readTVar beCurrentSlot <*> STM.readTVar beCurrentBlock
        pure $ Right result
      else do
-      blockNumber <- STM.readTVar beCurrentBlock
-
       instEnv <- S.instancesClientEnv instancesState
-      updateInstances (indexBlock $ fmap fromOnChainTx transactions) instEnv
-
-      let tip = Tip { tipSlot = slot
-                    , tipBlockId = blockId transactions
-                    , tipBlockNo = blockNumber
-                    }
-
-      updateTransactionState tip env (txEvent <$> fmap fromOnChainTx transactions)
+      pure $ do
+        lastSlot <- STM.readTVar beCurrentSlot
+        when (slot > lastSlot) $ do
+          STM.writeTVar beCurrentSlot slot
+        e <- instEnv
+        blockNumber <- STM.readTVar beCurrentBlock
+        updateInstances (indexBlock $ fmap fromOnChainTx transactions) e
+        let tip = Tip { tipSlot = slot
+                      , tipBlockId = blockId transactions
+                      , tipBlockNo = blockNumber
+                      }
+        updateTransactionState tip env (txEvent <$> fmap fromOnChainTx transactions)

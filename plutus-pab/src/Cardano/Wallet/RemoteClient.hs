@@ -24,7 +24,7 @@ import Plutus.PAB.Core.ContractInstance.STM (InstancesState)
 import Plutus.PAB.Core.ContractInstance.STM qualified as Instances
 import Wallet.API qualified as WAPI
 import Wallet.Effects (WalletEffect (BalanceTx, OwnPaymentPubKeyHash, SubmitTxn, TotalFunds, WalletAddSignature, YieldUnbalancedTx))
-import Wallet.Error (WalletAPIError (RemoteClientFunctionNotYetSupported), throwOtherError)
+import Wallet.Error (WalletAPIError (OtherError, RemoteClientFunctionNotYetSupported), throwOtherError)
 import Wallet.Types (ContractInstanceId)
 
 -- | Wallet effect handler to remote client scenario.
@@ -73,7 +73,8 @@ handleWalletClient config cidM event = do
                   case cidM of
                     Nothing -> throwOtherError "RemoteWalletClient: No contract instance id"
                     Just cid -> do
-                        iss <- ask @InstancesState
-                        liftIO $ STM.atomically $ do
-                            is <- Instances.instanceState cid iss
-                            STM.modifyTVar (Instances.issYieldedExportTxs is) (\txs -> txs ++ [ex])
+                        s <- ask @InstancesState >>= liftIO . Instances.instanceState cid
+                        case s of
+                            Nothing -> throwError $ OtherError $ "RemoteWalletClient: Contract instance not found: " <> Text.pack (show cid)
+                            Just instanceState -> liftIO $ STM.atomically $ do
+                                STM.modifyTVar (Instances.issYieldedExportTxs instanceState) (\txs -> txs ++ [ex])

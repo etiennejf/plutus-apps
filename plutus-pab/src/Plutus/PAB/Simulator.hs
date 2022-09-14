@@ -211,7 +211,7 @@ mkSimulatorHandlers slotCfg handleContractEffect =
     EffectHandlers
         { initialiseEnvironment =
             (,,)
-                <$> liftIO (STM.atomically   Instances.emptyInstancesState )
+                <$> liftIO (Instances.emptyInstancesState )
                 <*> liftIO (STM.atomically $ Instances.emptyBlockchainEnv Nothing def)
                 <*> liftIO (initialState @t)
         , handleContractStoreEffect =
@@ -422,7 +422,7 @@ waitNSlots = Core.waitNSlots
 type Simulation t a = Core.PABAction t (SimulatorState t) a
 
 runSimulationWith :: SimulatorEffectHandlers t -> Simulation t a -> IO (Either PABError a)
-runSimulationWith = Core.runPAB def
+runSimulationWith = Core.runPAB def def
 
 -- | Handle a 'LogMsg' effect in terms of a "larger" 'State' effect from which we have a setter.
 logIntoTQueue ::
@@ -461,7 +461,7 @@ handleChainControl slotCfg = \case
           currentTip <- getTip
           appendNewTipBlock currentTip txns slot
 
-        void $ liftIO $ STM.atomically $ BlockchainEnv.processMockBlock instancesState blockchainEnv txns slot
+        void $ liftIO (BlockchainEnv.processMockBlock instancesState blockchainEnv txns slot >>= STM.atomically)
 
         pure txns
     Chain.ModifySlot f -> runChainEffects @t @_ slotCfg (Chain.modifySlot f)
@@ -636,6 +636,9 @@ handleContractStore = \case
         fmap _contractDef <$> liftIO (STM.readTVarIO instancesTVar)
     Contract.PutStartInstance{} -> pure ()
     Contract.PutStopInstance{} -> pure ()
+    Contract.DeleteState i -> do
+        instancesTVar <- view instances <$> (Core.askUserEnv @t @(SimulatorState t))
+        void $ liftIO $ STM.atomically $ STM.modifyTVar instancesTVar (Map.delete i)
 
 render :: forall a. Pretty a => a -> Text
 render = Render.renderStrict . layoutPretty defaultLayoutOptions . pretty

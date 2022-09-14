@@ -26,7 +26,7 @@ import Cardano.BM.Configuration (Configuration)
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.ChainIndex.Server qualified as ChainIndex
 import Cardano.Node.Server qualified as NodeServer
-import Cardano.Node.Types (NodeMode (AlonzoNode, MockNode),
+import Cardano.Node.Types (NodeMode (MockNode),
                            PABServerConfig (pscNetworkId, pscNodeMode, pscSlotConfig, pscSocketPath), _AlonzoNode)
 import Cardano.Protocol.Socket.Type (epochSlots)
 import Cardano.Wallet.Mock.Server qualified as WalletServer
@@ -130,7 +130,7 @@ runConfigCommand _ ConfigCommandArgs{ccaTrace, ccaPABConfig = Config {nodeServer
                 (toMockNodeServerLog ccaTrace)
                 nodeServerConfig
                 ccaAvailability
-        AlonzoNode -> do
+        _        -> do
             available ccaAvailability
             -- The semantics of Command(s) is that once a set of commands are
             -- started if any finishes the entire application is terminated. We want
@@ -207,8 +207,8 @@ runConfigCommand
 -- Fork a list of commands
 runConfigCommand contractHandler c@ConfigCommandArgs{ccaAvailability, ccaPABConfig=Config {nodeServerConfig} } (ForkCommands commands) =
     let shouldStartMocks = case pscNodeMode nodeServerConfig of
-                             MockNode   -> True
-                             AlonzoNode -> False
+                             MockNode -> True
+                             _        -> False
         startedCommands  = filter (mockedServices shouldStartMocks) commands
      in void $ do
           putStrLn $ "Starting all commands (" <> show startedCommands <> ")."
