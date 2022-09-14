@@ -79,7 +79,7 @@ import Plutus.PAB.Timeout (Timeout (Timeout))
 import Plutus.PAB.Types (Config (Config), DbConfig (..),
                          PABError (BeamEffectError, ChainIndexError, NodeClientError, RemoteWalletWithMockNodeError, WalletClientError, WalletError),
                          WebserverConfig (WebserverConfig), chainIndexConfig, dbConfig, endpointTimeout,
-                         nodeServerConfig, pabWebserverConfig, walletServerConfig)
+                         nodeServerConfig, pabWebserverConfig, waitStatusTimeout, walletServerConfig)
 import Servant.Client (ClientEnv, ClientError, mkClientEnv)
 import Wallet.API (NodeClientEffect)
 import Wallet.Effects (WalletEffect)
@@ -237,8 +237,8 @@ runApp
     storageBackend
     trace
     contractHandler
-    config@Config{pabWebserverConfig=WebserverConfig{endpointTimeout}} =
-    Core.runPAB (Timeout endpointTimeout) (appEffectHandlers storageBackend config trace contractHandler)
+    config@Config{pabWebserverConfig=WebserverConfig{endpointTimeout, waitStatusTimeout}} =
+    Core.runPAB (Timeout endpointTimeout) (Timeout waitStatusTimeout) (appEffectHandlers storageBackend config trace contractHandler)
 
 type App a b = PABAction (Builtin a) (AppEnv a) b
 
