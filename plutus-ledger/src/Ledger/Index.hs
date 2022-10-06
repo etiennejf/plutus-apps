@@ -57,6 +57,8 @@ module Ledger.Index(
 import Prelude hiding (lookup)
 
 import Cardano.Api (Lovelace (..))
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
 import Control.Lens (Fold, folding, toListOf, view, (&), (^.))
 import Control.Monad
 import Control.Monad.Except (ExceptT, MonadError (..), runExcept, runExceptT)
@@ -140,9 +142,9 @@ lkpValue = fmap txOutValue . lkpTxOut
 -- Any datum hash associated with a spending pubkey utxo is discarded
 lkpTxOut :: ValidationMonad m => TxOutRef -> m TxOut
 lkpTxOut t = do
-  txout@(TxOut addr v _) <- lookup t . vctxIndex =<< ask
-  if isPubKeyOut txout then
-    pure (TxOut addr v Nothing)
+  txout@(TxOut (C.TxOut addr v _ _)) <- lookup t . vctxIndex =<< ask
+  if C.isKeyAddress addr then
+    pure (TxOut (C.TxOut addr v C.TxOutDatumNone C.ReferenceScriptNone))
   else
     pure txout
 
