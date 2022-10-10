@@ -34,7 +34,7 @@ import Cardano.ChainIndex.Types qualified as ChainIndex
 import Cardano.Node.Client (handleNodeClientClient, runChainSyncWithCfg)
 import Cardano.Node.Params qualified as Params
 import Cardano.Node.Types (ChainSyncHandle, NodeMode (MockNode),
-                            PABServerConfig (PABServerConfig, pscBaseUrl, pscNodeMode, pscSocketPath))
+                           PABServerConfig (PABServerConfig, pscBaseUrl, pscNodeMode, pscSocketPath))
 import Cardano.Protocol.Socket.Mock.Client qualified as MockClient
 import Cardano.Wallet.LocalClient qualified as LocalWalletClient
 import Cardano.Wallet.Mock.Client qualified as WalletMockClient
