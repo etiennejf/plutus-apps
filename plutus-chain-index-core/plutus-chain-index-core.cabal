@@ -139,6 +139,7 @@ library
     , text-class
     , unordered-containers
     , warp
+    , wai-extra
 
 test-suite plutus-chain-index-test
   import:         lang
