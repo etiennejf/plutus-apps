@@ -217,6 +217,7 @@ library
     , uuid
     , wai
     , wai-cors
+    , wai-extra
     , warp
     , websockets
     , yaml
