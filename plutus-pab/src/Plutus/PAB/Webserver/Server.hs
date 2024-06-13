@@ -28,6 +28,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Bifunctor (first)
 import Data.ByteString.Lazy.Char8 qualified as LBS
+import Data.Default (def)
 import Data.Function ((&))
 import Data.Monoid (Endo (Endo, appEndo))
 import Data.OpenApi.Schema qualified as OpenApi
@@ -35,6 +36,7 @@ import Data.Proxy (Proxy (Proxy))
 import Network.Wai (Middleware)
 import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Middleware.Cors qualified as Cors
+import Network.Wai.Middleware.Gzip qualified as Gzip
 import Network.Wai.Middleware.Servant.Options qualified as Cors
 import Plutus.PAB.Core (PABAction, PABRunner (PABRunner, runPABAction))
 import Plutus.PAB.Core qualified as Core
@@ -110,7 +112,7 @@ startServer WebserverConfig{baseUrl, staticDir, permissiveCorsPolicy, endpointTi
       logWarn @(LM.PABMultiAgentMsg t) (LM.UserLog "Warning: Using a very permissive CORS policy! *Any* website serving JavaScript can interact with these endpoints.")
     startServer' middlewares (baseUrlPort baseUrl) staticDir availability (timeout endpointTimeout)
       where
-        middlewares = if permissiveCorsPolicy then corsMiddlewares else []
+        middlewares = if permissiveCorsPolicy then gzipMiddleware : corsMiddlewares else [gzipMiddleware]
         corsMiddlewares =
             [ -- a custom CORS policy since 'simpleCors' doesn't support "content-type" header by default
             let policy = Cors.simpleCorsResourcePolicy { Cors.corsRequestHeaders = [ "content-type" ] }
@@ -118,6 +120,7 @@ startServer WebserverConfig{baseUrl, staticDir, permissiveCorsPolicy, endpointTi
             -- this middleware handles preflight OPTIONS browser requests
             , Cors.provideOptions (Proxy @(API (Contract.ContractDef t) Integer))
             ]
+        gzipMiddleware = Gzip.gzip def { Gzip.gzipSizeThreshold = 1024 }
         -- By default we use the normal request timeout: 30 seconds. But if
         -- someone has asked for a longer endpoint timeout, we need to set
         -- that to be the webserver timeout as well.

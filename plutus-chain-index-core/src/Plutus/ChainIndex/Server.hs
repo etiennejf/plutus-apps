@@ -14,6 +14,7 @@ import Control.Monad.Freer (Eff, Member, type (~>))
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Monoid (Endo (Endo, appEndo))
 import Data.ByteString.Lazy qualified as BSL
 import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
@@ -21,6 +22,7 @@ import Data.Proxy (Proxy (..))
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Network.Wai.Handler.Warp qualified as Warp
+import Network.Wai.Middleware.Gzip qualified as Gzip
 import Plutus.ChainIndex (RunRequirements, runChainIndexEffects)
 import Plutus.ChainIndex.Api (API, FromHashAPI, FullAPI, QueryAtAddressRequest (QueryAtAddressRequest),
                               TxoAtAddressRequest (TxoAtAddressRequest), UtxoAtAddressRequest (UtxoAtAddressRequest),
@@ -37,7 +39,10 @@ serveChainIndexQueryServer ::
     -> IO ()
 serveChainIndexQueryServer port runReq = do
     let server = hoistServer (Proxy @API) (runChainIndexQuery runReq) serveChainIndex
-    Warp.run port (serve (Proxy @FullAPI) (server :<|> swagger))
+    Warp.run port $ middleware (serve (Proxy @FullAPI) (server :<|> swagger))
+
+  where gzipMiddleware = Gzip.gzip def { Gzip.gzipSizeThreshold = 1024 }
+        middleware = appEndo $ foldMap Endo [gzipMiddleware]
 
 runChainIndexQuery ::
     RunRequirements
